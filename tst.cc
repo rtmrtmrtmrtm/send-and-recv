@@ -17,14 +17,45 @@
 void
 go(int s)
 {
+  struct sarargs args;
+  struct sarvec sendvec;
+  struct sarvec recvvec;
+  char sendbuf[512];
+  char recvbuf[512];
+
+  args.sendvec = &sendvec;
+  args.nsend = 0;
+  args.recvvec = &recvvec;
+  args.nrecv = 0;
+  sendvec.fd = s;
+  sendvec.name = 0;
+  sendvec.namelen = 0;
+  sendvec.data = sendbuf;
+  sendvec.len = 0;
+  recvvec.fd = s;
+  recvvec.name = 0;
+  recvvec.namelen = 0;
+  recvvec.data = recvbuf;
+  recvvec.len = 0;
+
+  int sar = open("/dev/sar", 2);
+  if(sar < 0){
+    perror("/dev/sar");
+    exit(1);
+  }
+  
   while(1){
-    char buf[1024];
-    int n = read(s, buf, sizeof(buf));
-    printf("got %d from %d\n", n, s);
-    if(n <= 0)
-      break;
+    recvvec.len = sizeof(recvbuf);
+    args.nrecv = 1;
+    int err = write(sar, &args, sizeof(args));
+    if(err < 0){
+      perror("go() write");
+      exit(1);
+    }
+    printf("tst recvvec.len %ld\n", recvvec.len);
   }
   close(s);
+  close(sar);
 }
 
 int
@@ -62,7 +93,13 @@ main(int argc, char *argv[])
     v->data = &buf[i];
     v->len = 1;
   }
-  if(write(sar, &vv, sizeof(vv)) <= 0){
+
+  struct sarargs args;
+  args.sendvec = vv;
+  args.nsend = ns;
+  args.recvvec = 0;
+  args.nrecv = 0;
+  if(write(sar, &args, sizeof(args)) <= 0){
     perror("write");
     exit(1);
   }
