@@ -1,16 +1,3 @@
-/**
- * @file    sar.c
- * @author  Robert Morris
- * @date    March 29 2018
- * @version 0.1
- * @brief  big_write_read()
-*/
-
-/*
- * Thank you, Derek Molloy, for the initial example source.
- * http://derekmolloy.ie/writing-a-linux-kernel-module-part-1-introduction/
- */
- 
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -45,56 +32,45 @@ sar_read(struct file *filp, char *buffer, size_t length, loff_t *offset)
   return 0;
 }
 
-static ssize_t
-sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
+int
+one_write(struct sarvec *vec)
 {
   int err;
-  struct sarvec vec;
   struct msghdr msg;
   struct socket *sock = 0;
   struct iovec iov;
   struct sockaddr_storage address;
 
-  if(len != sizeof(struct sarvec)){
-    printk(KERN_INFO "sar_write bad length\n");
-    return -EINVAL;
-  }
-
-  if(copy_from_user(&vec, buffer, sizeof(vec)) != 0){
-    printk(KERN_INFO "sar_write copy_from_user failed\n");
-    return -EINVAL;
-  }
-  printk(KERN_INFO "sar_write %d %p %ld\n", vec.fd, vec.data, vec.len);
-
   // cook up a fake system msghdr for sock_sendmsg().
-  err = import_single_range(WRITE, vec.data, vec.len, &iov, &msg.msg_iter);
+  err = import_single_range(WRITE, vec->data, vec->len, &iov, &msg.msg_iter);
   if(err){
     printk(KERN_INFO "sar_write import_single_range failed\n");
     return -EINVAL;
   }
 
   msg.msg_name = NULL;
+  msg.msg_namelen = 0;
   msg.msg_control = NULL;
   msg.msg_controllen = 0;
-  msg.msg_namelen = 0;
+  msg.msg_iocb = 0;
   msg.msg_flags = 0; // could be MSG_DONTWAIT
 
-  if(vec.name != 0){
-    if(vec.namelen > sizeof(address)){
+  if(vec->name != 0){
+    if(vec->namelen > sizeof(address)){
       printk(KERN_INFO "sar_write name too long\n");
       return -EINVAL;
     }
-    if(copy_from_user(&address, vec.name, vec.namelen) != 0){
+    if(copy_from_user(&address, vec->name, vec->namelen) != 0){
       printk(KERN_INFO "sar_write copy_from_user failed\n");
       return -EINVAL;
     }
     msg.msg_name = (struct sockaddr*) &address;
-    msg.msg_namelen = vec.namelen;
+    msg.msg_namelen = vec->namelen;
   }
 
-  sock = sockfd_lookup(vec.fd, &err);
+  sock = sockfd_lookup(vec->fd, &err);
   if(!sock){
-    printk(KERN_INFO "sockfd_lookup(%d) failed\n", vec.fd);
+    printk(KERN_INFO "sockfd_lookup(%d) failed\n", vec->fd);
     return -EINVAL;
   }
 
@@ -106,7 +82,24 @@ sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
     return -EINVAL;
   }
 
-  return sizeof(vec);
+  return 0;
+}
+
+static ssize_t
+sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
+{
+  int i;
+  struct sarvec vec;
+
+  for(i = 0; i+sizeof(vec) <= len; i += sizeof(vec)){
+    if(copy_from_user(&vec, buffer+i, sizeof(vec)) != 0){
+      printk(KERN_INFO "sar_write copy_from_user failed\n");
+      return -EINVAL;
+    }
+    one_write(&vec);
+  }
+
+  return len; // XXX
 }
 
 static struct file_operations fops = {
@@ -119,7 +112,6 @@ static struct file_operations fops = {
 static int Major;
  
 static int __init sar_init(void){
-   printk(KERN_INFO "Hello from sar.ko\n");
    Major = register_chrdev(0, "sar", &fops);
    if(Major < 0){
      printk(KERN_ALERT "register_chrdev failed\n");
@@ -131,7 +123,6 @@ static int __init sar_init(void){
 }
  
 static void __exit sar_exit(void){
-   printk(KERN_INFO "Goodbye from sar.ko\n");
    unregister_chrdev(Major, "sar");
 }
  

@@ -50,19 +50,21 @@ main(int argc, char *argv[])
     exit(1);
   }
 
+  struct sarvec vv[ns];
+  char buf[ns];
+
   for(int i = 0; i < ns; i++){
-    char c = 'a' + i;
-    struct sarvec v;
-    v.fd = wa[i];
-    v.name = 0;
-    v.namelen = 0;
-    v.data = &c;
-    v.len = 1;
-    printf("tst v.data %p\n", v.data);
-    if(write(sar, &v, sizeof(v)) <= 0){
-      perror("write");
-      exit(1);
-    }
+    buf[i] = 'a' + i;
+    struct sarvec *v = &vv[i];
+    v->fd = wa[i];
+    v->name = 0;
+    v->namelen = 0;
+    v->data = &buf[i];
+    v->len = 1;
+  }
+  if(write(sar, &vv, sizeof(vv)) <= 0){
+    perror("write");
+    exit(1);
   }
 
   sleep(1);
