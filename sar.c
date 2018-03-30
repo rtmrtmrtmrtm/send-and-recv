@@ -53,7 +53,7 @@ one_send(struct sarvec *vec)
   msg.msg_control = NULL;
   msg.msg_controllen = 0;
   msg.msg_iocb = 0;
-  msg.msg_flags = 0; // could be MSG_DONTWAIT
+  msg.msg_flags = vec->flags & (MSG_DONTWAIT|MSG_EOR|MSG_MORE|MSG_NOSIGNAL);
 
   if(vec->name != 0){
     if(vec->namelen > sizeof(address)){
@@ -107,7 +107,8 @@ one_recv(struct sarvec *vec)
   msg.msg_control = NULL;
   msg.msg_controllen = 0;
   msg.msg_iocb = 0;
-  msg.msg_flags = 0;
+  msg.msg_flags = vec->flags & MSG_DONTWAIT;
+  flags = msg.msg_flags;
 
   sock = sockfd_lookup(vec->fd, &err);
   if(!sock){
@@ -154,7 +155,9 @@ sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
       printk(KERN_INFO "sar_write copy_from_user failed\n");
       return -EINVAL;
     }
-    one_send(&vec);
+    if(vec.len > 0){
+      one_send(&vec);
+    }
   }
 
   for(i = 0; i < args.nrecv; i++){
@@ -162,11 +165,13 @@ sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
       printk(KERN_INFO "sar_write copy_from_user failed\n");
       return -EINVAL;
     }
-    err = one_recv(&vec);
-    vec.len = err;
-    if(copy_to_user(args.recvvec+i, &vec, sizeof(vec)) != 0){
-      printk(KERN_INFO "sar_write copy_to_user failed\n");
-      return -EINVAL;
+    if(vec.len > 0){
+      err = one_recv(&vec);
+      vec.len = err;
+      if(copy_to_user(args.recvvec+i, &vec, sizeof(vec)) != 0){
+        printk(KERN_INFO "sar_write copy_to_user failed\n");
+        return -EINVAL;
+      }
     }
   }
 

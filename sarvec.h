@@ -15,4 +15,5 @@ struct sarvec {
   unsigned int namelen;
   char *data;
   size_t len;
+  int flags; // MSG_DONTWAIT
 };
