@@ -18,6 +18,7 @@
 #include <linux/net.h>
 #include <linux/file.h>
 #include <linux/uaccess.h>
+#include "sarvec.h"
  
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Robert Morris");
@@ -38,11 +39,6 @@ sar_release(struct inode *ii, struct file *filp)
   return 0;
 }
 
-struct sarvec {
-  int fd;
-  struct msghdr *msg;
-};
-
 static ssize_t
 sar_read(struct file *filp, char *buffer, size_t length, loff_t *offset)
 {
@@ -53,15 +49,48 @@ static ssize_t
 sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
 {
   int err;
-  struct socket *sock;
   struct sarvec vec;
+  struct msghdr msg;
+  struct socket *sock = 0;
+  struct iovec iov;
+  struct sockaddr_storage address;
 
-  if(len != sizeof(struct sarvec))
+  if(len != sizeof(struct sarvec)){
+    printk(KERN_INFO "sar_write bad length\n");
     return -EINVAL;
+  }
 
-  if(copy_from_user(&vec, buffer, sizeof(vec)))
+  if(copy_from_user(&vec, buffer, sizeof(vec)) != 0){
+    printk(KERN_INFO "sar_write copy_from_user failed\n");
     return -EINVAL;
-  printk(KERN_INFO "sar_write %d %p\n", vec.fd, vec.msg);
+  }
+  printk(KERN_INFO "sar_write %d %p %ld\n", vec.fd, vec.data, vec.len);
+
+  // cook up a fake system msghdr for sock_sendmsg().
+  err = import_single_range(WRITE, vec.data, vec.len, &iov, &msg.msg_iter);
+  if(err){
+    printk(KERN_INFO "sar_write import_single_range failed\n");
+    return -EINVAL;
+  }
+
+  msg.msg_name = NULL;
+  msg.msg_control = NULL;
+  msg.msg_controllen = 0;
+  msg.msg_namelen = 0;
+  msg.msg_flags = 0; // could be MSG_DONTWAIT
+
+  if(vec.name != 0){
+    if(vec.namelen > sizeof(address)){
+      printk(KERN_INFO "sar_write name too long\n");
+      return -EINVAL;
+    }
+    if(copy_from_user(&address, vec.name, vec.namelen) != 0){
+      printk(KERN_INFO "sar_write copy_from_user failed\n");
+      return -EINVAL;
+    }
+    msg.msg_name = (struct sockaddr*) &address;
+    msg.msg_namelen = vec.namelen;
+  }
 
   sock = sockfd_lookup(vec.fd, &err);
   if(!sock){
@@ -69,15 +98,11 @@ sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
     return -EINVAL;
   }
 
-  // convert user_msghdr to msghdr
-  // copy_msghdr_from_user(&sysmsg, umsg, NULL, &iov)
-  // as in ___sys_sendmsg() in net/socket.c
-
-  err = sock_sendmsg(sock, vec.msg);
+  err = sock_sendmsg(sock, &msg);
   sockfd_put(sock);
 
-  if(err != 0){
-    printk(KERN_INFO "sockfd_sendmsg failed\n");
+  if(err < 0){
+    printk(KERN_INFO "sockfd_sendmsg failed %d\n", err);
     return -EINVAL;
   }
 

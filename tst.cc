@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <vector>
 #include <thread>
+#include "sarvec.h"
 
 void
 go(int s)
@@ -25,11 +26,6 @@ go(int s)
   }
   close(s);
 }
-
-struct sarvec {
-  int fd;
-  struct msghdr *msg;
-};
 
 int
 main(int argc, char *argv[])
@@ -57,15 +53,12 @@ main(int argc, char *argv[])
   for(int i = 0; i < ns; i++){
     char c = 'a' + i;
     struct sarvec v;
-    struct msghdr msg;
-    struct iovec iov[1];
     v.fd = wa[i];
-    v.msg = &msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.msg_iov = iov;
-    msg.msg_iovlen = 1;
-    iov[0].iov_base = &c;
-    iov[0].iov_len = 1;
+    v.name = 0;
+    v.namelen = 0;
+    v.data = &c;
+    v.len = 1;
+    printf("tst v.data %p\n", v.data);
     if(write(sar, &v, sizeof(v)) <= 0){
       perror("write");
       exit(1);
