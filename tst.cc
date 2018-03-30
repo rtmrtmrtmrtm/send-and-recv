@@ -42,7 +42,7 @@ go(std::vector<int> sv)
     recvvec[i].namelen = 0;
     recvvec[i].data = (char*) malloc(512);
     recvvec[i].len = 0;
-    recvvec[i].flags = MSG_DONTWAIT;
+    recvvec[i].flags = MSG_DONTWAIT; // non-blocking reads, so it spins.
   }
 
   int sar = open("/dev/sar", 2);
@@ -129,7 +129,7 @@ main(int argc, char *argv[])
   args.nrecv = ns;
 
   // send data on all of the descriptors,
-  // and the receive (waiting for input) on all.
+  // and receive (waiting for input) on all.
   if(write(sar, &args, sizeof(args)) <= 0){
     perror("write");
     exit(1);
