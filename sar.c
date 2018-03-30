@@ -88,7 +88,7 @@ one_send(struct sarvec *vec)
 int
 one_recv(struct sarvec *vec)
 {
-  int err;
+  int err, ret;
   struct msghdr msg;
   struct socket *sock = 0;
   struct iovec iov;
@@ -115,16 +115,8 @@ one_recv(struct sarvec *vec)
     return -EINVAL;
   }
 
-  err = sock_recvmsg(sock, &msg, flags);
+  ret = sock_recvmsg(sock, &msg, flags);
   sockfd_put(sock);
-
-  // the return value.
-  if(err < 0){
-    vec->len = 0;
-  } else {
-    vec->len = iov_iter_count(&msg.msg_iter);
-  }
-  printk(KERN_INFO "sock_recvmsg() -> %d iter_count %ld\n", err, vec->len);
 
   if(err < 0){
     printk(KERN_INFO "sockfd_recvmsg failed %d\n", err);
@@ -142,13 +134,13 @@ one_recv(struct sarvec *vec)
     }
   }
 
-  return 0;
+  return ret;
 }
 
 static ssize_t
 sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
 {
-  int i;
+  int i, err;
   struct sarvec vec;
   struct sarargs args;
 
@@ -170,7 +162,12 @@ sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
       printk(KERN_INFO "sar_write copy_from_user failed\n");
       return -EINVAL;
     }
-    one_recv(&vec);
+    err = one_recv(&vec);
+    vec.len = err;
+    if(copy_to_user(args.recvvec+i, &vec, sizeof(vec)) != 0){
+      printk(KERN_INFO "sar_write copy_to_user failed\n");
+      return -EINVAL;
+    }
   }
 
   // XXX how to indicate read or write error?
