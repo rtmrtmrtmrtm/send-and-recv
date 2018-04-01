@@ -159,6 +159,8 @@ sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
     }
   }
 
+  yield();
+
   for(i = 0; i < args.nrecv; i++){
     if(copy_from_user(&vec, args.recvvec+i, sizeof(vec)) != 0){
       printk(KERN_INFO "sar_write copy_from_user failed\n");
