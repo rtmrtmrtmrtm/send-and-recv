@@ -16,6 +16,8 @@
 #include <thread>
 #include "sarvec.h"
 
+int test_eof = 0;
+
 // read the descriptors in vector sv,
 // and write data back to them.
 void
@@ -50,6 +52,11 @@ go(std::vector<int> sv)
     perror("/dev/sar");
     exit(1);
   }
+
+  if(test_eof){
+    // enough time that main thread has closed the socketpairs.
+    sleep(1);
+  }
   
   while(1){
     for(int i = 0; i < n; i++){
@@ -64,6 +71,10 @@ go(std::vector<int> sv)
       sendvec[i].len = 0;
     }
     for(int i = 0; i < n; i++){
+      if(test_eof){
+        // expecting zero
+        printf("recvvec len %ld\n", recvvec[i].len);
+      }
       if(recvvec[i].len > 0){
         // echo the data back on the same socket.
         memcpy(sendvec[i].data, recvvec[i].data, recvvec[i].len);
@@ -71,6 +82,8 @@ go(std::vector<int> sv)
         sendvec[i].len = recvvec[i].len;
       }
     }
+    if(test_eof)
+      break;
   }
   for(int i = 0; i < n; i++){
     close(sv[i]);
@@ -95,6 +108,14 @@ main(int argc, char *argv[])
   }
   
   std::thread *th = new std::thread(go, ra);
+
+  if(test_eof){
+    for(int i = 0; i < ns; i++){
+      close(wa[i]);
+    }
+    sleep(2);
+    exit(0);
+  }
 
   int sar = open("/dev/sar", 2);
   if(sar < 0){
@@ -134,7 +155,7 @@ main(int argc, char *argv[])
     perror("write");
     exit(1);
   }
-
+  
   for(int i = 0; i < ns; i++){
     if(recvvec[i].len != 1){
       fprintf(stderr, "tst: expected 1 byte, got %ld\n", recvvec[i].len);

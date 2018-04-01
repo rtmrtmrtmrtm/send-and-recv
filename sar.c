@@ -119,10 +119,9 @@ one_recv(struct sarvec *vec)
   ret = sock_recvmsg(sock, &msg, flags);
   sockfd_put(sock);
 
-  if(err < 0){
-    printk(KERN_INFO "sockfd_recvmsg failed %d\n", err);
-    return -EINVAL;
-  }
+  // ret = -11 means EAGAIN
+  // ret = 0 means EOF
+  // ret > 0 means data
 
   if(vec->name != 0){
     if(vec->namelen > sizeof(address)){
