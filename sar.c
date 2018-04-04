@@ -140,8 +140,9 @@ one_recv(struct sarvec *vec)
 static ssize_t
 sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
 {
-  int i, err;
-  struct sarvec vec;
+  int i, err, ii, nn;
+#define GRAN 8
+  struct sarvec vv[GRAN];
   struct sarargs args;
 
   if(copy_from_user(&args, buffer, sizeof(args)) != 0){
@@ -149,35 +150,44 @@ sar_write(struct file *filp, const char *buffer, size_t len, loff_t *off)
     return -EINVAL;
   }
 
-  for(i = 0; i < args.nsend; i++){
-    if(copy_from_user(&vec, args.sendvec+i, sizeof(vec)) != 0){
+  for(ii = 0; ii < args.nsend; ii += GRAN){
+    nn = GRAN;
+    if(ii + nn > args.nsend)
+      nn = args.nsend - ii;
+    if(copy_from_user(vv, args.sendvec+ii, nn*sizeof(struct sarvec)) != 0){
       printk(KERN_INFO "sar_write copy_from_user failed\n");
       return -EINVAL;
     }
-    if(vec.len > 0){
-      one_send(&vec);
+    for(i = 0; i < nn; i++){
+      if(vv[i].len > 0){
+        one_send(&vv[i]);
+      }
     }
   }
 
   yield();
 
-  for(i = 0; i < args.nrecv; i++){
-    if(copy_from_user(&vec, args.recvvec+i, sizeof(vec)) != 0){
+  for(ii = 0; ii < args.nrecv; ii += GRAN){
+    nn = GRAN;
+    if(ii + nn > args.nrecv)
+      nn = args.nrecv - ii;
+    if(copy_from_user(vv, args.recvvec+ii, nn*sizeof(struct sarvec)) != 0){
       printk(KERN_INFO "sar_write copy_from_user failed\n");
       return -EINVAL;
     }
-    if(vec.len > 0){
-      err = one_recv(&vec);
-      vec.len = err;
-      if(copy_to_user(args.recvvec+i, &vec, sizeof(vec)) != 0){
-        printk(KERN_INFO "sar_write copy_to_user failed\n");
-        return -EINVAL;
+    for(i = 0; i < nn; i++){
+      if(vv[i].len > 0){
+        err = one_recv(&vv[i]);
+        vv[i].len = err;
       }
+    }
+    if(copy_to_user(args.recvvec+ii, vv, nn*sizeof(struct sarvec)) != 0){
+      printk(KERN_INFO "sar_write copy_to_user failed\n");
+      return -EINVAL;
     }
   }
 
-  // XXX how to indicate read or write error?
-  return len; // XXX
+  return len;
 }
 
 static struct file_operations fops = {
